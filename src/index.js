@@ -1,4 +1,3 @@
-
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -9,9 +8,11 @@ dotenv.config();
 
 const app = express();
 
+
 const allowedOrigins = [
-  'http://localhost:5173', 
+  'http://localhost:5173',
   'https://outside-project.vercel.app', 
+  "https://outside-zone.com",
 ];
 
 app.use(
@@ -32,22 +33,24 @@ app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+
 const payuConfig = {
   merchantId: process.env.PAYU_MERCHANT_ID,
   apiKey: process.env.PAYU_API_KEY,
   accountId: process.env.PAYU_ACCOUNT_ID,
   testMode: process.env.PAYU_TEST_MODE === 'true',
   paymentUrl: process.env.PAYU_TEST_MODE === 'true'
-    ? 'https://sandbox.checkout.payulatam.com/ppp-web-gateway-payu/'
-    : 'https://checkout.payulatam.com/ppp-web-gateway-payu/',
+    ? 'https://sandbox.checkout.payulatam.com/ppp-web-gateway-payu/' 
+    : 'https://checkout.payulatam.com/ppp-web-gateway-payu/', 
 };
+
 
 app.post('/create-payu-payment', async (req, res) => {
   try {
     const { total, referenceCode, buyerEmail, description } = req.body;
 
-    if (!total || !referenceCode || !buyerEmail) {
-      return res.status(400).json({ error: 'Faltan parámetros: total, referenceCode y buyerEmail son obligatorios' });
+    if (!total || !referenceCode || !buyerEmail || !description) {
+      return res.status(400).json({ error: 'Faltan parámetros: total, referenceCode, buyerEmail y description son obligatorios' });
     }
 
     const signatureString = `${payuConfig.apiKey}~${payuConfig.merchantId}~${referenceCode}~${total}~COP`;
@@ -55,18 +58,18 @@ app.post('/create-payu-payment', async (req, res) => {
 
     const payuParams = {
       merchantId: payuConfig.merchantId,
-      accountId: payuConfig.accountId,
-      description: description,
       referenceCode: referenceCode,
+      description: description,
       amount: total,
-      tax: '0', 
-      taxReturnBase: '0', 
       currency: 'COP',
       signature: signature,
-      test: payuConfig.testMode ? '1' : '0',
       buyerEmail: buyerEmail,
-      responseUrl: 'http://localhost:5173/success', 
-      confirmationUrl: 'http://localhost:4000/confirmation',
+      responseUrl: 'https://outside-zone/success',
+      confirmationUrl: 'https://outside-zone.com/confirmation', 
+      test: payuConfig.testMode ? '1' : '0', 
+      tax: '0', 
+      taxReturnBase: '0', 
+      accountId: payuConfig.accountId, 
     };
 
     console.log('Parámetros de PayU:', payuParams);
@@ -92,6 +95,7 @@ app.post('/confirmation', async (req, res) => {
       return res.status(200).send('OK');
     }
 
+
     const purchaseId = reference_sale.replace('OUTSIDE_', '');
 
     let status;
@@ -99,19 +103,18 @@ app.post('/confirmation', async (req, res) => {
       case '4':
         status = 'completed';
         break;
-      case '6':
+      case '6': 
         status = 'declined';
         break;
       case '5': 
         status = 'expired';
         break;
-      case '7': 
+      case '7':
         status = 'pending';
         break;
       default:
         status = 'unknown';
     }
-
 
     const { error } = await supabase
       .from('purchases')
