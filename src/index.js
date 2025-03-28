@@ -1,4 +1,4 @@
-// En outside-backend/src/index.js
+
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -8,24 +8,40 @@ const { createClient } = require('@supabase/supabase-js');
 dotenv.config();
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// Configurar Supabase
+const allowedOrigins = [
+  'http://localhost:5173', 
+  'https://outside-project.vercel.app', 
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+  })
+);
+
+app.use(express.json());
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// Configurar PayU
 const payuConfig = {
   merchantId: process.env.PAYU_MERCHANT_ID,
   apiKey: process.env.PAYU_API_KEY,
   accountId: process.env.PAYU_ACCOUNT_ID,
   testMode: process.env.PAYU_TEST_MODE === 'true',
   paymentUrl: process.env.PAYU_TEST_MODE === 'true'
-    ? 'https://sandbox.checkout.payulatam.com/ppp-web-gateway' // Sandbox
-    : 'https://checkout.payulatam.com/ppp-web-gateway', // Producción
+    ? 'https://sandbox.checkout.payulatam.com/ppp-web-gateway'
+    : 'https://checkout.payulatam.com/ppp-web-gateway',
 };
 
-// Endpoint para crear un pago con PayU
 app.post('/create-payu-payment', async (req, res) => {
   try {
     const { total, referenceCode, buyerEmail, description } = req.body;
@@ -34,25 +50,23 @@ app.post('/create-payu-payment', async (req, res) => {
       return res.status(400).json({ error: 'Faltan parámetros: total, referenceCode y buyerEmail son obligatorios' });
     }
 
-    // Generar la firma (signature) para PayU
     const signatureString = `${payuConfig.apiKey}~${payuConfig.merchantId}~${referenceCode}~${total}~COP`;
     const signature = crypto.createHash('md5').update(signatureString).digest('hex');
 
-    // Parámetros para el formulario de PayU
     const payuParams = {
       merchantId: payuConfig.merchantId,
       accountId: payuConfig.accountId,
       description: description,
       referenceCode: referenceCode,
       amount: total,
-      tax: '0', // Impuestos (ajusta según tus necesidades)
-      taxReturnBase: '0', // Base para impuestos (ajusta según tus necesidades)
+      tax: '0', 
+      taxReturnBase: '0', 
       currency: 'COP',
       signature: signature,
-      test: payuConfig.testMode ? '1' : '0', // 1 para sandbox, 0 para producción
+      test: payuConfig.testMode ? '1' : '0',
       buyerEmail: buyerEmail,
-      responseUrl: 'http://localhost:5173/success', // URL de retorno para pruebas locales
-      confirmationUrl: 'http://localhost:4000/confirmation', // URL de confirmación para pruebas locales
+      responseUrl: 'http://localhost:5173/success', 
+      confirmationUrl: 'http://localhost:4000/confirmation',
     };
 
     console.log('Parámetros de PayU:', payuParams);
@@ -67,7 +81,6 @@ app.post('/create-payu-payment', async (req, res) => {
   }
 });
 
-// Endpoint para recibir notificaciones de confirmación de PayU (webhook)
 app.post('/confirmation', async (req, res) => {
   try {
     const { reference_sale, state_pol, transaction_id } = req.body;
@@ -79,27 +92,26 @@ app.post('/confirmation', async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    // Extraer el purchaseId del reference_sale
     const purchaseId = reference_sale.replace('OUTSIDE_', '');
 
-    // Mapear el estado de PayU a un estado interno
     let status;
     switch (state_pol) {
-      case '4': // Aprobada
+      case '4':
         status = 'completed';
         break;
-      case '6': // Declinada
+      case '6':
         status = 'declined';
         break;
-      case '5': // Expirada
+      case '5': 
         status = 'expired';
         break;
-      case '7': // Pendiente
+      case '7': 
         status = 'pending';
         break;
       default:
         status = 'unknown';
     }
+
 
     const { error } = await supabase
       .from('purchases')
